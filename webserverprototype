@@ -1,0 +1,215 @@
+#lang web-server/insta
+ 
+ 
+(struct blog (posts) #:mutable)
+ 
+ 
+(struct post (title body comments) #:mutable)
+ 
+ 
+(define BLOG
+  (blog
+   (list (post "Created by"
+               "Christian, Jose and Aritra"
+               (list))
+         (post "Click to learn how to post a blog"
+               "Give the title for your post on the first box and write your blog on the second blog"
+               (list)))))
+ 
+ 
+(define (blog-insert-post! a-blog a-post)
+  (set-blog-posts! a-blog
+                   (cons a-post (blog-posts a-blog))))
+ 
+ 
+(define (post-insert-comment! a-post a-comment)
+  (set-post-comments!
+   a-post
+   (append (post-comments a-post) (list a-comment))))
+ 
+ 
+(define (start request)
+  (render-blog-page request))
+ 
+ 
+ 
+(define (render-blog-page request)
+  (define (response-generator embed/url)
+    (response/xexpr
+     `(html (head (title "My Blog"))
+            (body
+             '(style ((type "text/css"))  "
+body {
+  margin-left: 30%;
+  margin-right: 30%;
+ margin-top:5%;
+  background-color: cornsilk;
+}
+p { font-family: sans-serif
+}
+h1 {font-family: verdana;
+    text-align: center;
+    font-size: 100px;
+    font-style: italic;
+    color: DodgerBlue;
+    border-width: 100px;
+    border-style: outset;
+}}
+
+ 
+h2 { font-size: 200px
+     border-width: 5px;
+    border-style: solid;}}
+ 
+span.hot { color: red }
+" )
+             (h1 "My Blog")
+             ,(render-posts embed/url)
+             (form ((action
+                     ,(embed/url insert-post-handler)))
+                   (input ((name "title")))
+                   (input ((name "body")))
+                   (input ((type "submit"))))))))
+  
+ 
+  (define (parse-post bindings)
+    (post (extract-binding/single 'title bindings)
+          (extract-binding/single 'body bindings)
+          (list)))
+ 
+  (define (insert-post-handler request)
+    (blog-insert-post!
+     BLOG (parse-post (request-bindings request)))
+    (render-blog-page request))
+  (send/suspend/dispatch response-generator))
+ 
+ 
+(define (render-post-detail-page a-post request)
+  (define (response-generator embed/url)
+    (response/xexpr
+     `(html (head (title "Post Details"))
+            (body
+                  '(style ((type "text/css"))  "
+body {
+  margin-left: 40%;
+  margin-right: 40%;
+  
+  background-color: cornsilk;
+}
+p { font-family: sans-serif
+    }
+h1 {  color: red;
+    text-align: center;
+    font-size: 100px;
+    font-style: Tahoma
+    border-width: 40px;
+    border-style: groove;}
+h2 { font-size: 50px}
+a:hover { 
+    background-color: red;
+    color:black
+    font-size: 500px;
+}
+span.hot { color: red }
+" )
+             (h1 "Post Details")
+             (h2 ,(post-title a-post))
+             (p ,(post-body a-post))
+             ,(render-as-itemized-list
+               (post-comments a-post))
+             (form ((action
+                     ,(embed/url insert-comment-handler)))
+                   (input ((name "comment")))
+                   (input ((type "submit"))))
+             (a ((href ,(embed/url back-handler)))
+                "Back to the blog")))))
+ 
+  (define (parse-comment bindings)
+    (extract-binding/single 'comment bindings))
+ 
+  (define (insert-comment-handler request)
+    (render-confirm-add-comment-page
+     (parse-comment (request-bindings request))
+     a-post
+     request))
+ 
+  (define (back-handler request)
+    (render-blog-page request))
+  (send/suspend/dispatch response-generator))
+ 
+(define (render-confirm-add-comment-page a-comment a-post request)
+  (define (response-generator embed/url)
+    (response/xexpr
+     `(html (head (title "Add a Comment"))
+            (body
+             (h1 "Add a Comment")
+             "The comment: " (div (p ,a-comment))
+             "will be added to "
+             (div ,(post-title a-post))
+ 
+             (p (a ((href ,(embed/url yes-handler)))
+                   "Yes, add the comment."))
+             (p (a ((href ,(embed/url cancel-handler)))
+                   "No, I changed my mind!"))))))
+ 
+  (define (yes-handler request)
+    (post-insert-comment! a-post a-comment)
+    (render-post-detail-page a-post request))
+ 
+  (define (cancel-handler request)
+    (render-post-detail-page a-post request))
+  (send/suspend/dispatch response-generator))
+ 
+ 
+(define (render-post a-post embed/url)
+  (define (view-post-handler request)
+    (render-post-detail-page a-post request))
+  `(div ((class "post"))
+ '(style ((type "text/css"))  "
+a:hover { 
+    background-color: grey;
+    color:black
+    font-size: 500px;
+    border-height: 50px;
+    border-style: solid;
+    border-top-style: dotted;
+    border-bottom-right-radius: 2em;
+    border-top-left-radius:2em;
+border-left-style: dotted;
+
+    
+a {border-style:solid;
+border-width:10px;
+   border-bottom-right-radius: 2em;
+    text-align: center;
+    font-size: 100px;
+    font-style: Tahoma
+   
+}
+")
+ 
+        (a ((href ,(embed/url view-post-handler)))
+           ,(post-title a-post))
+        (p ,(post-body a-post))
+        (div ,(number->string (length (post-comments a-post)))
+             " comment(s)")))
+ 
+ 
+(define (render-posts embed/url)
+  (define (render-post/embed/url a-post)
+    (render-post a-post embed/url))
+  `(div ((class "posts"))
+        ,@(map render-post/embed/url (blog-posts BLOG)))
+)
+ 
+ 
+(define (render-as-itemized-list fragments)
+  `(ul ,@(map render-as-item fragments))
+    )
+ 
+ 
+(define (render-as-item a-fragment)
+  `(li ,a-fragment))
+ 
+ 
+ 
